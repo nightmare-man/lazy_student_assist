@@ -2,6 +2,54 @@ import requests as Re
 import execjs as jsexe
 import re
 import time
+user="264953"
+pd="114181"
+rsa_key=""
+lt_str=""
+execution=""
+vatify_code=""
+s=Re.Session()
+login_flag=0
+class_list_info=[]
+def login_index(session):
+	global login_flag
+	global class_list_info
+	global rsa_key
+	global lt_str
+	global execution
+	global vatify_code
+	res=session.get("http://zhlgd.whut.edu.cn/tpass/login?service=http%3A%2F%2Fjxpt.whut.edu.cn%3A81%2Fmeol%2Fhomepage%2Fcommon%2Fsso_login.jsp")
+	#<input type="hidden" id="lt" name="lt" value="LT-748312-6ualcdMgkORamuLjzbiNZKYe9AZmi6-tpass" />
+	lt_str=re.search("(<.*?id.*?\"lt\".*?value.*?\")([^\"\n]*?)(\")",res.text)[2]#第二段即是lt
+	#<input type="hidden" name="execution" value="e3s2" />
+	execution=re.search("(<.*?name.*?execution.*?value.*?\")(.*?)(\")",res.text)[2]
+	f=open("/home/lsm/class_assistance/des.js","r")
+	jsfile=f.read()
+	f.close()
+	ctx=jsexe.compile(jsfile)
+	rsa_key=ctx.call("strEnc",user+pd+lt_str,"1","2","3")
+	data_to_send={"rememberName":"on",\
+		"rsa":rsa_key,\
+		"ul":str(len(user)),\
+		"pl":str(len(pd)),\
+		"lt":lt_str,\
+		"execution":execution,\
+		"_eventId":"submit"}
+	if(res.text.find("id=\"vali\"")>0):
+		print("要输入验证码！")
+		img_src="http://zhlgd.whut.edu.cn/tpass/code"#暂时是不变的 懒得解析了
+		res=session.get(img_src)
+		f=open("/home/lsm/vatify.jpeg","wb+")
+		f.write(res.content)
+		f.close()
+		vatify_code=str(input("请查看并输入验证码！保存在/home/lsm/vatify.jpeg"))
+		data_to_send["code"]=vatify_code
+	res=session.post("http://zhlgd.whut.edu.cn/tpass/login?service=http%3A%2F%2Fzhlgd.whut.edu.cn%2Ftp_up%2F",data=data_to_send)
+	if(len(res.history)>0 and res.text.find("在线人数")>0):
+		print("login success")
+		login_flag=1
+	else:
+		print("login fail")
 def view_class_index_page(session,classid):
 	res=session.get("http://jxpt.whut.edu.cn:81/meol/jpk/course/layout/newpage/index.jsp",\
 		params={"courseId":str(classid)})
@@ -34,70 +82,32 @@ def class_syntax(class_li_text):
 	ret.append(teacher_name)
 	ret.append(class_id)
 	return ret
-user="264953"
-pd="114181"
-rsa_key=""
-lt_str=""
-execution=""
-vatify_code=""
-s=Re.Session()
-res=s.get("http://zhlgd.whut.edu.cn/tpass/login?service=http%3A%2F%2Fjxpt.whut.edu.cn%3A81%2Fmeol%2Fhomepage%2Fcommon%2Fsso_login.jsp")
-#<input type="hidden" id="lt" name="lt" value="LT-748312-6ualcdMgkORamuLjzbiNZKYe9AZmi6-tpass" />
-
-lt_str=re.search("(<.*?id.*?\"lt\".*?value.*?\")([^\"\n]*?)(\")",res.text)[2]#第二段即是lt
-#<input type="hidden" name="execution" value="e3s2" />
-execution=re.search("(<.*?name.*?execution.*?value.*?\")(.*?)(\")",res.text)[2]
-f=open("/home/lsm/class_assistance/des.js","r")
-jsfile=f.read()
-f.close()
-ctx=jsexe.compile(jsfile)
-rsa_key=ctx.call("strEnc",user+pd+lt_str,"1","2","3")
-data_to_send={"rememberName":"on",\
-	"rsa":rsa_key,\
-	"ul":str(len(user)),\
-	"pl":str(len(pd)),\
-	"lt":lt_str,\
-	"execution":execution,\
-	"_eventId":"submit"}
-#print(res.text)
-if(res.text.find("id=\"vali\"")>0):
-	print("要输入验证码！")
-	img_src="http://zhlgd.whut.edu.cn/tpass/code"#暂时是不变的 懒得解析了
-	res=s.get(img_src)
-	f=open("/home/lsm/vatify.jpeg","wb+")
-	f.write(res.content)
-	f.close()
-	vatify_code=str(input("请查看并输入验证码！保存在/home/lsm/vatify.jpeg"))
-	data_to_send["code"]=vatify_code
-res=s.post("http://zhlgd.whut.edu.cn/tpass/login?service=http%3A%2F%2Fzhlgd.whut.edu.cn%2Ftp_up%2F",data=data_to_send)
-login_flag=0
-if(len(res.history)>0 and res.text.find("在线人数")>0):
-	print("login success")
-	login_flag=1
-else:
-	print("login fail")
-#登陆之后的事情
-class_list_info=[]
-if(login_flag==1):
-	#获取课程列表
-	res=s.get("http://jxpt.whut.edu.cn:81/meol/welcomepage/student/course_list_v8.jsp")
-	pattern=re.compile("<li>[\s\S]*?</li>")
-	class_list_text=pattern.findall(res.text)
-	for x in class_list_text:
-		class_list_info.append(class_syntax(x))
-	assert(len(class_list_info)>0)
-	#获取课程学习时长：
-	index=0
-	for x in class_list_info:
-		x.append(get_study_info(s,x[2],"159857"))
-		print("编号",index,end=":")
-		index=index+1
-		print(x)
-	index=int(input("请选择一个课程自动学习（输入对应的数字编号）:"))
-	view_class_index_page(s,class_list_info[index][2])
-	while(1):
-		study_class_over_time(s,class_list_info[index][2])
-		time.sleep(60)
+def get_all_class_info(session):
+	#登陆之后的事情
+	global login_flag
+	global class_list_info
+	if(login_flag==1):
+		#获取课程列表
+		res=session.get("http://jxpt.whut.edu.cn:81/meol/welcomepage/student/course_list_v8.jsp")
+		pattern=re.compile("<li>[\s\S]*?</li>")
+		class_list_text=pattern.findall(res.text)
+		for x in class_list_text:
+			class_list_info.append(class_syntax(x))
+		assert(len(class_list_info)>0)
+		#获取课程学习时长：
+		index=0
+		for x in class_list_info:
+			x.append(get_study_info(s,x[2],"159857"))
+			print("编号",index,end=":")
+			index=index+1
+			print(x)
+login_index(s)
+get_all_class_info(s)
+index=int(input("请选择一个课程自动学习（输入对应的数字编号）:"))
+view_class_index_page(s,class_list_info[index][2])
+while(1):
+	study_class_over_time(s,class_list_info[index][2])
+	time.sleep(60)
 		
 
 	
